@@ -2,6 +2,8 @@
 A small app that syncs your server mods via cloud services.
 This application is for Windows only.
 
+Written in Visual Basic 6 (VB Classic)
+
 ## Version Summary:
 * v1.00: Original release.
 
