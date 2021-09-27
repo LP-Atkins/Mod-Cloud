@@ -20,8 +20,9 @@
 '
 
 'User Settings.
-Dim ModdedName:		ModdedName = "Cloud"		'The name of the modified valheim folder, This string will be appened to the valheim folder when it is copied.
+Dim ModdedName:		ModdedName = "(modded)"		'The name of the modified valheim folder, This string will be appened to the valheim folder when it is copied.
 Call Main
+
 
 
 	
@@ -29,11 +30,13 @@ Call Main
 		
 		'Find the valheim directory.
 		Dim sVanillaPath:	sVanillaPath = FindInstallDir(":\Program Files (x86)\Steam\steamapps\common\Valheim")
-		Dim sModdedPath:	sModdedPath = sVanillaPath & " " & ModdedName
+		Dim sModdedPath
+		If sVanillaPath = "NOT FOUND" Then	sVanillaPath = FindInstallDir(":\SteamLibrary\steamapps\common\Valheim")
 		If sVanillaPath = "NOT FOUND" Then
 			Msgbox "Couldn't locate the valheim directory", vbOkOnly, "Valheim Missing"
 			Exit Sub
 		End If
+		sModdedPath = sVanillaPath & ModdedName
 		
 		'Find the mods folder.
 		Dim sModsFolder: sModsFolder = GetScriptPath & "\Mods"
@@ -48,14 +51,10 @@ Call Main
 		
 
 		'Launch Application
-		Call OpenFile(sModdedPath & "\Valheim.exe")
+		If Msgbox("Updates Applied, would you like to launch the game now?", vbYesNo, "Launch Game") = vbYes Then Call OpenFile(sModdedPath & "\Valheim.exe")
 		
 
 	End Sub
-
-
-
-
 
 
 
