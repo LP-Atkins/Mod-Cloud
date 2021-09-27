@@ -1,5 +1,13 @@
 'Valheim-Cloud Server Client
 'Re-written in vbs because windows defender kept falsly flagging the .exe version as a trojan.
+'
+'Operational description:
+'-----------------------------
+'1.) Makes a copy of the original game files.
+'2.) Patches the game folder with the mods directory.
+'3.) Launches the game via a steam command.
+'4.) Waits until the game is closed and then restores the vanilla files.
+'
 
 'Instructions
 '1.) Create a shared cloud storage location (I use onedrive).
@@ -12,15 +20,18 @@
 
 
 'Original Release by LongParnsip
+'Current Version: 1.02
 '-------------------------------------------------------------------------------
 'Version        Date                Author                  Description
 '
 'v1.00          24/09/2021          LongParsnip             Original Release (exe release)
 'v1.01			24/09/2021			LongParsnip				VBS release
+'v1.02			27/09/2021			LongParsnip				Added SteamUI support
 '
 
 'User Settings.
-Dim ModdedName:		ModdedName = "(modded)"		'The name of the modified valheim folder, This string will be appened to the valheim folder when it is copied.
+Dim ModdedName:		ModdedName = "(unmodded)"		'The name of the modified valheim folder, This string will be appened to the valheim folder when it is copied.
+													'Update, this will now be used to store the vanilla files... because the steamUI cannot be hooked.
 Call Main
 
 
@@ -30,7 +41,11 @@ Call Main
 		
 		'Find the valheim directory.
 		Dim sVanillaPath:	sVanillaPath = FindInstallDir(":\Program Files (x86)\Steam\steamapps\common\Valheim")
+		Dim SteamUIPath:	SteamUIPath = FindInstallDir(":\Program Files (x86)\Steam")
 		Dim sModdedPath
+		Dim vhPID
+		Dim stmPID
+		
 		If sVanillaPath = "NOT FOUND" Then	sVanillaPath = FindInstallDir(":\SteamLibrary\steamapps\common\Valheim")
 		If sVanillaPath = "NOT FOUND" Then
 			Msgbox "Couldn't locate the valheim directory", vbOkOnly, "Valheim Missing"
@@ -46,14 +61,25 @@ Call Main
 		End If
 
 		'Create Files
-		Msgbox RoboCopy(sVanillaPath, sModdedPath, "/MIR")	'Game Files
-		Msgbox RoboCopy(sModsFolder, sModdedPath, "/s")   	'Copy mods to the correct locations.
+		Call RoboCopy(sVanillaPath, sModdedPath, "/MIR")	'Game Files
+		Call RoboCopy(sModsFolder, sVanillaPath, "/s")   	'Copy mods to the correct locations.
 		
 
 		'Launch Application
-		If Msgbox("Updates Applied, would you like to launch the game now?", vbYesNo, "Launch Game") = vbYes Then Call OpenFile(sModdedPath & "\Valheim.exe")
+		Call OpenFile("steam://run/892970")
 		
-
+		
+		'Wait for VH to be closed.
+		'This restores the vanilla files once the game is closed (as the only way to get the SteamUI to work is to launch via steam."
+		WScript.Sleep 15000
+		vhPID = getPID("valheim.exe")
+		Do While vhPID <> 0
+			WScript.Sleep 5000
+			vhPID = getPID("valheim.exe")
+		Loop
+		Call RoboCopy(sModdedPath, sVanillaPath, "/MIR")	'Copy back original files.
+	
+		
 	End Sub
 
 
@@ -63,6 +89,7 @@ Call Main
 '---------------------------------------------------------------------------------------------
 '----- Subprocedures
 '---------------------------------------------------------------------------------------------
+
 
 	'Opens a file at the specified path.
 	'Call openFile("C:\MyFile.txt")
@@ -75,6 +102,33 @@ Call Main
 '---------------------------------------------------------------------------------------------
 '----- Functions
 '---------------------------------------------------------------------------------------------
+
+	'This sub waits for the game client to start and then attaches the steam UI to the PID
+	Public Function getPID(exeName)
+	Dim objWMI:		Set objWMI = GetObject("winmgmts:!\\.\root\cimv2")
+	Dim wmiQuery, process
+	Dim PID
+	Dim i
+	
+		'Wait for the process to start and obtain it's Process Id (PID).
+		For i = 1 To 20
+			
+			wmiQuery = "SELECT ProcessId From Win32_Process WHERE Name = '" & exeName & "'"
+			For Each process In objWMI.ExecQuery(wmiQuery)
+				PID = process.ProcessId
+				If PID <> 0 Then
+					Exit For
+				Else
+					WScript.Sleep 1000
+				End If
+			Next
+			
+		Next
+		
+		
+	getPID = PID
+	End Function
+
 
 	'Finds the installed folder directory:
 	Public Function FindInstallDir(strInstallDir)
