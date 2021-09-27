@@ -1,4 +1,4 @@
-# Valheim-Cloud Server Client, v1.01
+# Valheim-Cloud Server Client, v1.02
 A small app that syncs your server mods via cloud services.
 This application is for Windows only.
 
@@ -7,6 +7,7 @@ Written in Visual Basic Script using the windows scripting host.
 ## Version Summary:
 * v1.00: Original release.
 * v1.01: Converted to vbscript as windows defender was falsly flagging the .exe as a virus.
+* v1.02: Added support for the steam overlay.
 
   
 ## How to use:    
