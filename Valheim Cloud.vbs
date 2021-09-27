@@ -35,23 +35,25 @@ Dim ModdedName:		ModdedName = "(unmodded)"		'The name of the modified valheim fo
 Call Main
 
 
-
 	
 	Sub Main()
 		
 		'Find the valheim directory.
-		Dim sVanillaPath:	sVanillaPath = FindInstallDir(":\Program Files (x86)\Steam\steamapps\common\Valheim")
-		Dim SteamUIPath:	SteamUIPath = FindInstallDir(":\Program Files (x86)\Steam")
+		Dim sVanillaPath:	
+		Dim SteamUIPath:	SteamUIPath = GetSteamInstallPath
 		Dim sModdedPath
 		Dim vhPID
-		Dim stmPID
 		
-		If sVanillaPath = "NOT FOUND" Then	sVanillaPath = FindInstallDir(":\SteamLibrary\steamapps\common\Valheim")
+		'Locate the install directory.
+		sVanillaPath = LocateFolder		'Attempt 1 to find folder.
+		If sVanillaPath = "NOT FOUND" Then sVanillaPath = FindInstallDir(":\Program Files (x86)\Steam\steamapps\common\Valheim")	'Attempt 2
+		If sVanillaPath = "NOT FOUND" Then	sVanillaPath = FindInstallDir(":\SteamLibrary\steamapps\common\Valheim")				'Attempt 3
 		If sVanillaPath = "NOT FOUND" Then
 			Msgbox "Couldn't locate the valheim directory", vbOkOnly, "Valheim Missing"
 			Exit Sub
 		End If
 		sModdedPath = sVanillaPath & ModdedName
+		
 		
 		'Find the mods folder.
 		Dim sModsFolder: sModsFolder = GetScriptPath & "\Mods"
@@ -102,6 +104,47 @@ Call Main
 '---------------------------------------------------------------------------------------------
 '----- Functions
 '---------------------------------------------------------------------------------------------
+
+	Public Function LocateFolder
+	Dim steamPath
+	
+		steamPath = GetSteamInstallPath
+		If FileExists(steamPath & "\steamapps\appmanifest_892970.acf") Then
+			LocateFolder = steamPath & "\steamapps\common\valheim"
+			Exit Function
+		End If
+		
+		
+		Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+		Dim objFile: Set objFile = objFSO.OpenTextFile(steamPath & "\steamapps\libraryfolders.vdf",1)
+		Dim strLibs
+		Dim strLine
+			Do Until objFile.AtEndOfStream
+				strLine = objFile.ReadLine
+				If InStr(1, strLine, "path") > 0 Then strLibs = strLibs & Replace(Replace(Trim(Replace(Replace(Trim(strLine),Chr(34),""),"path","")),"\\","\"),vbTab,"") & "|"
+			Loop
+	
+		Dim arrLibs: arrLibs = Split(strLibs, "|")
+		Dim i
+		For i = LBound(arrLibs) To UBound(arrLibs)
+			If FileExists(arrLibs(i) & "\steamapps\appmanifest_892970.acf") Then
+				LocateFolder = arrLibs(i) & "\steamapps\common\valheim"
+				Exit For
+			End If
+		Next
+	
+	objFile.Close
+	If LocateFolder = "" Then LocateFolder = "NOT FOUND"
+	End Function
+
+
+
+	Public Function GetSteamInstallPath()
+	Dim objShell:	Set objShell = CreateObject("Wscript.shell")
+		GetSteamInstallPath = Replace(objShell.RegRead("HKEY_CURRENT_USER\SOFTWARE\Valve\Steam\SteamPath"), "/", "\")
+	End Function
+
+
 
 	'This sub waits for the game client to start and then attaches the steam UI to the PID
 	Public Function getPID(exeName)
