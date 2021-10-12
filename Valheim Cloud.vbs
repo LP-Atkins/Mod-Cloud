@@ -3,86 +3,134 @@
 '
 'Operational description:
 '-----------------------------
-'1.) Makes a copy of the original game files.
-'2.) Patches the game folder with the mods directory.
-'3.) Launches the game via a steam command.
-'4.) Waits until the game is closed and then restores the vanilla files.
+'1.) Downloads the latest mod file and extracts it.
+'2.) Makes a copy of the original game files.
+'3.) Patches the game folder with the mods directory.
+'4.) Launches the game via a steam command.
+'5.) Waits until the game is closed and then restores the vanilla files.
 '
 
-'Instructions
-'1.) Create a shared cloud storage location (I use onedrive).
-'2.) Sync the library to your cloud storage so that it appears as a local folder.
-'3.) Run the app once to create the mods folder.
-'4.) Add all changes to your game files from the root directory of the game files.
-'5.) Press the launch button to launch the game.
+'Instructions ***IMPORTANT*** - This script was written for useage with Microsoft Onedrive only.
+'Note1: Check the 'How to use.pdf' file in the repository for more detailed instructions.
+'Note2: The default embeddedURL will point you to my public server, this server will continue to run indefinitely.
+'-----------------------------
+'1.) Create a zip file of all your mods from the root directory of valheim.
+'2.) Upload to onedrive and generate an embedded link.
+'3.) Copy the embedded 'src' link and replace the user setting variable embeddedURL with the new string.
+'4.) Save the .vbs file and distribute to clients.
+'5.) Launch the game via this vbs file.
 
 'Note: If the game directory is not found you will need to input location of the vanilla files.
 
 
 'Original Release by LongParnsip
-'Current Version: 1.02
+'Current Version: 1.03
 '-------------------------------------------------------------------------------
 'Version        Date                Author                  Description
 '
-'v1.00          24/09/2021          LongParsnip             Original Release (exe release)
-'v1.01			24/09/2021			LongParsnip				VBS release
-'v1.02			27/09/2021			LongParsnip				Added SteamUI support
-'
+'v1.00          24/09/2021          LongParsnip             Original Release (exe release).
+'v1.01			24/09/2021			LongParsnip				VBS release.
+'v1.02			27/09/2021			LongParsnip				Added SteamUI support.
+'v1.03			12/10/2021			LongParsnip				Re-written to download from a direct link which makes end user usage a 'one click' operation.
 
-'User Settings.
-Dim ModdedName:		ModdedName = "(unmodded)"		'The name of the modified valheim folder, This string will be appened to the valheim folder when it is copied.
-													'Update, this will now be used to store the vanilla files... because the steamUI cannot be hooked.
+
+'User Settings:
+'-----------------------------
+Dim embeddedURL:	embeddedURL = "https://onedrive.live.com/embed?cid=6002A8DD978B973A&resid=6002A8DD978B973A%2142416&authkey=AOw7p-kegsQxPrw"		'This is the embedded link to the onedrive file.
+Dim BackupName:		BackupName = "(unmodded)"																										'The name of the modified backed up valheim folder, which will be restored when the game closes.
 Call Main
 
 
+Sub Main()
+
 	
-	Sub Main()
-		
-		'Find the valheim directory.
-		Dim sVanillaPath:	
-		Dim SteamUIPath:	SteamUIPath = GetSteamInstallPath
-		Dim sModdedPath
-		Dim vhPID
-		
-		'Locate the install directory.
-		sVanillaPath = LocateFolder		'Attempt 1 to find folder.
-		If sVanillaPath = "NOT FOUND" Then sVanillaPath = FindInstallDir(":\Program Files (x86)\Steam\steamapps\common\Valheim")	'Attempt 2
-		If sVanillaPath = "NOT FOUND" Then	sVanillaPath = FindInstallDir(":\SteamLibrary\steamapps\common\Valheim")				'Attempt 3
-		If sVanillaPath = "NOT FOUND" Then
-			Msgbox "Couldn't locate the valheim directory", vbOkOnly, "Valheim Missing"
-			Exit Sub
-		End If
-		sModdedPath = sVanillaPath & ModdedName
-		
-		
-		'Find the mods folder.
-		Dim sModsFolder: sModsFolder = GetScriptPath & "\Mods"
-		If Not FolderExists(sModsFolder) Then
-			Msgbox "Couldn't locate the 'mods' folder, make sure it is in the same directory as this script.", vbOkOnly, "Mods Missing"
-			Exit Sub
-		End If
+	'Find the valheim directory by reading the registry and steam library file.
+	Dim sVanillaPath: sVanillaPath = LocateFolder
+	If sVanillaPath = "NOT FOUND" Then
+		Msgbox "Couldn't locate the valheim directory", vbOkOnly, "Valheim Missing"
+		Exit Sub
+	End If
+	If FolderExists(sVanillaPath & "\BepInEx") Then	'Mods detected warning.
+		If Msgbox("It looks like your game is modified, it is recommend to restore it to vanilla. Would you like to cancel the launch?", vbYesNo, "Mods Detected") = vbYes Then Exit Sub
+	End If
+	
+	
+	
+	'Create a MSXML object so that data can be scraped from the zip file URL.
+	Dim objMSXML:	Set objMSXML = CreateObject("MSXML2.ServerXMLHTTP")
+	Dim downloadURL:	downloadURL = Replace(embeddedURL, "embed", "download")
+		objMSXML.open "GET", embeddedURL, false
+		objMSXML.send
 
-		'Create Files
-		Call RoboCopy(sVanillaPath, sModdedPath, "/MIR")	'Game Files
-		Call RoboCopy(sModsFolder, sVanillaPath, "/s")   	'Copy mods to the correct locations.
-		
 
-		'Launch Application
-		Call OpenFile("steam://run/892970")
-		
-		
-		'Wait for VH to be closed.
-		'This restores the vanilla files once the game is closed (as the only way to get the SteamUI to work is to launch via steam."
-		WScript.Sleep 15000
+
+	'Get the last modified data.
+	Dim strTemp, arrTemp, DateModified
+		strTemp = Mid(objMSXML.responseText,Instr(1, objMSXML.responseText, """modifiedDate""") + 15, 30)
+		arrTemp = Split(strTemp,","): DateModified = arrTemp(0)
+
+
+
+	'Download File, if required.
+	CreateFolder(sVanillaPath & "\mods")	'Create mods directory if it doesn't exist.
+	If Not FileExists(sVanillaPath & "\mods\mods-" & DateModified & ".zip") Then
+		Msgbox "Downloading Update - Press OK to start the download, this may take a while.", vbOkOnly, "Update Available"
+		Dim objStream:		Set objStream = CreateObject("Adodb.Stream")
+			objMSXML.Open "GET", downloadURL, false
+			objMSXML.Send
+			objStream.type = 1
+			objStream.open
+			objStream.write objMSXML.responseBody
+			objStream.savetofile sVanillaPath & "\mods\mods-" & DateModified & ".zip", 2
+			objStream.close
+	End If
+	
+	
+	
+	
+	
+	
+	'Create Game Files
+	'-----------------------------------------------------------------------------------------------------
+
+	'Remove old extracted versions of the mods if they exist.
+	Dim CurrentVersion
+	If FileExists(sVanillaPath & "\mods\unzipped\version.txt") Then
+		CurrentVersion = GetExtractedVersion(sVanillaPath & "\mods\unzipped\version.txt")
+		If CurrentVersion <> DateModified Then
+			Call DeleteFolder(sVanillaPath & "\mods\unzipped")
+		End If
+	Else
+		If FolderExists(sVanillaPath & "\mods\unzipped\") Then Call DeleteFolder (sVanillaPath & "\mods\unzipped\")		'Delete unzipped folder just incase it logically exists when it shouldn't.
+	End If
+	
+	Call CreateFolder(sVanillaPath & "\mods\unzipped")
+	If CurrentVersion <> DateModified Then Call UnzipFiles(sVanillaPath & "\mods\mods-" & DateModified & ".zip", sVanillaPath & "\mods\unzipped")		'Unzip the files if they haven't been already.
+	Call DebugPrint(sVanillaPath & "\mods\unzipped\version.txt", DateModified)
+	Call RoboCopy(sVanillaPath, sVanillaPath & BackupName, "/MIR")				'Game Files.
+	Call RoboCopy(sVanillaPath & "\mods\unzipped", sVanillaPath, "/s")   		'Copy mods to the correct locations.
+	Call CleanupOldFiles(sVanillaPath & BackupName & "\mods\", DateModified)	'Removes old versions of the mods zip file.
+	
+	
+	
+	'Launch Application
+	Call OpenFile("steam://run/892970")
+	
+	
+	'Wait for VH to be closed.
+	'This restores the vanilla files once the game is closed (as the only way to get the SteamUI to work is to launch via steam."
+	Dim vhPID
+	WScript.Sleep 15000
+	vhPID = getPID("valheim.exe")
+	Do While vhPID <> 0
+		WScript.Sleep 5000
 		vhPID = getPID("valheim.exe")
-		Do While vhPID <> 0
-			WScript.Sleep 5000
-			vhPID = getPID("valheim.exe")
-		Loop
-		Call RoboCopy(sModdedPath, sVanillaPath, "/MIR")	'Copy back original files.
+	Loop
+	Call RoboCopy(sVanillaPath & BackupName, sVanillaPath, "/MIR")	'Copy back original files.
 	
-		
-	End Sub
+
+End Sub
+
 
 
 
@@ -92,56 +140,113 @@ Call Main
 '----- Subprocedures
 '---------------------------------------------------------------------------------------------
 
+	Public Sub DebugPrint(outputLocation, whatToPrint)
+	Dim objFile: Set objFile = CreateObject("Scripting.FileSystemObject").OpenTextFile(outputLocation,2,True)
 
+		objFile.WriteLine(whatToPrint)
+		objFile.Close
+
+	End Sub
+
+
+	
+	Public Sub UnzipFiles(zipPath, extractPath)
+	Dim objShellApp:	Set objShellApp = CreateObject("Shell.Application")
+	Dim zipFiles:		Set zipFiles = objShellApp.NameSpace(zipPath).Items
+	
+		objShellApp.NameSpace(extractPath).copyHere zipFiles, 16
+		
+	End Sub
+	
+	
+	
+	'Note: We are cleaning up the backup directory, because robocopy will purge the vanilla directory later when the game exits.
+	Public Sub CleanupOldFiles(zipDirectory, CurrentVersion)
+	Dim arrFiles: arrFiles = ListFiles(zipDirectory)
+	Dim i, o
+	
+		For i = LBound(arrFiles) To UBound(arrFiles)
+			If arrFiles(i) <> "" Then
+				If Instr(1, arrFiles(i), CurrentVersion) = 0 Then
+					Call DeleteFile(zipDirectory & arrFiles(i))
+				End If
+			End If
+		Next
+	
+	End Sub
+	
+	
+	
+	Public Sub DeleteFile(filePath)
+	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+		objFSO.DeleteFile filePath, True
+	End Sub
+	
+	
+	
+	Public Sub DeleteFolder(folderPath)
+	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+		objFSO.DeleteFolder folderPath, True
+	End Sub
+	
+	
+	
 	'Opens a file at the specified path.
 	'Call openFile("C:\MyFile.txt")
 	Public Sub OpenFile(strFilePath)
 	Dim objShellApplication: Set objShellApplication = CreateObject("Shell.Application")
 		objShellApplication.Open strFilePath
 	End Sub
-
+	
 
 '---------------------------------------------------------------------------------------------
 '----- Functions
 '---------------------------------------------------------------------------------------------
 
+	'Returns the path that the script is executing from.
+	Public Function GetScriptPath()
+		GetScriptPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
+	End Function
+
+
+
 	Public Function LocateFolder
-	Dim steamPath
-	
-		steamPath = GetSteamInstallPath
-		If FileExists(steamPath & "\steamapps\appmanifest_892970.acf") Then
-			LocateFolder = steamPath & "\steamapps\common\valheim"
-			Exit Function
-		End If
+		Dim steamPath
 		
-		
-		Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
-		Dim objFile: Set objFile = objFSO.OpenTextFile(steamPath & "\steamapps\libraryfolders.vdf",1)
-		Dim strLibs
-		Dim strLine
-			Do Until objFile.AtEndOfStream
-				strLine = objFile.ReadLine
-				If InStr(1, strLine, "path") > 0 Then strLibs = strLibs & Replace(Replace(Trim(Replace(Replace(Trim(strLine),Chr(34),""),"path","")),"\\","\"),vbTab,"") & "|"
-			Loop
-	
-		Dim arrLibs: arrLibs = Split(strLibs, "|")
-		Dim i
-		For i = LBound(arrLibs) To UBound(arrLibs)
-			If FileExists(arrLibs(i) & "\steamapps\appmanifest_892970.acf") Then
-				LocateFolder = arrLibs(i) & "\steamapps\common\valheim"
-				Exit For
+			steamPath = GetSteamInstallPath
+			If FileExists(steamPath & "\steamapps\appmanifest_892970.acf") Then
+				LocateFolder = steamPath & "\steamapps\common\valheim"
+				Exit Function
 			End If
-		Next
-	
-	objFile.Close
-	If LocateFolder = "" Then LocateFolder = "NOT FOUND"
+			
+			
+			Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+			Dim objFile: Set objFile = objFSO.OpenTextFile(steamPath & "\steamapps\libraryfolders.vdf",1)
+			Dim strLibs
+			Dim strLine
+				Do Until objFile.AtEndOfStream
+					strLine = objFile.ReadLine
+					If InStr(1, strLine, "path") > 0 Then strLibs = strLibs & Replace(Replace(Trim(Replace(Replace(Trim(strLine),Chr(34),""),"path","")),"\\","\"),vbTab,"") & "|"
+				Loop
+		
+			Dim arrLibs: arrLibs = Split(strLibs, "|")
+			Dim i
+			For i = LBound(arrLibs) To UBound(arrLibs)
+				If FileExists(arrLibs(i) & "\steamapps\appmanifest_892970.acf") Then
+					LocateFolder = arrLibs(i) & "\steamapps\common\valheim"
+					Exit For
+				End If
+			Next
+		
+		objFile.Close
+		If LocateFolder = "" Then LocateFolder = "NOT FOUND"
 	End Function
 
 
 
 	Public Function GetSteamInstallPath()
-	Dim objShell:	Set objShell = CreateObject("Wscript.shell")
-		GetSteamInstallPath = Replace(objShell.RegRead("HKEY_CURRENT_USER\SOFTWARE\Valve\Steam\SteamPath"), "/", "\")
+		Dim objShell:	Set objShell = CreateObject("Wscript.shell")
+			GetSteamInstallPath = Replace(objShell.RegRead("HKEY_CURRENT_USER\SOFTWARE\Valve\Steam\SteamPath"), "/", "\")
 	End Function
 
 
@@ -171,32 +276,9 @@ Call Main
 		
 	getPID = PID
 	End Function
-
-
-	'Finds the installed folder directory:
-	Public Function FindInstallDir(strInstallDir)
-	Dim i
-	Dim bFound
-
-		'64 Bit Windows.
-		For i = 3 To 26
-			If FolderExists(ConvertToLetter(i) & strInstallDir) Then
-				FindInstallDir = ConvertToLetter(i) & strInstallDir
-				bFound = True
-				Exit For
-			End If
-		Next
-
-	If FindInstallDir = "" Then FindInstallDir = "NOT FOUND"
-	End Function
-
-
-	'Returns the path that the script is executing from.
-	Public Function GetScriptPath()
-		GetScriptPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
-	End Function
-
-
+	
+	
+	
 	'Checks if a file exists.
 	Public Function FileExists(strPath)
 	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
@@ -204,28 +286,23 @@ Call Main
 	End Function
 	
 	
+	
 	'Checks if a folder exists.
 	Public Function FolderExists(strPath)
-	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+	Dim objFSO: Set objFSO = CreateObject("Scripting.FileSystemObject")
 		If objFSO.FolderExists(strPath) Then FolderExists = True
 	End Function
+	
+	
+	
+	'Checks for a folder and creates it if it doesn't exist
+	Public Sub CreateFolder(strPath)
+	Dim objFSO: Set objFSO = CreateObject("Scripting.FileSystemObject")
 
+		If Not objFSO.FolderExists(strPath) Then objFSO.CreateFolder (strPath)
 
-	'Converts a number to a letter
-	'https://support.microsoft.com/en-au/help/833402/how-to-convert-excel-column-numbers-into-alphabetical-characters
-	'Call ConvertToLetter(1)
-	Public Function ConvertToLetter(iCol)
-	   Dim iAlpha
-	   Dim iRemainder
-	   iAlpha = Int(iCol / 27)
-	   iRemainder = iCol - (iAlpha * 26)
-	   If iAlpha > 0 Then
-		  ConvertToLetter = Chr(iAlpha + 64)
-	   End If
-	   If iRemainder > 0 Then
-		  ConvertToLetter = ConvertToLetter & Chr(iRemainder + 64)
-	   End If
-	End Function
+	End Sub
+	
 	
 	
 	'Robocopy with StdOut
@@ -241,4 +318,38 @@ Call Main
 		
 		
 		RoboCopy = strTemp
+	End Function
+	
+	
+	
+	'This Function Returns a list of folders.
+	'Array = ListFiles(objShell.CurrentDirectory & "\Folder\")
+	Function ListFiles(sFolder)
+
+		Dim objFSO : Set objFSO = CreateObject("Scripting.FileSystemObject")
+		Dim folder, files, dirLen, arrTemp(), i
+
+		Set folder = objFSO.GetFolder(sFolder)
+		Set files = folder.Files
+
+		dirLen = Len(sFolder)
+		
+		i = 0
+		Redim arrTemp(0)
+		
+		For each x In files
+			arrTemp(i) = Right(x,Len(x) - dirLen)
+			i = i + 1
+			Redim Preserve arrTemp(i)
+		Next
+	  
+		ListFiles = arrTemp
+	  
+	End Function
+	
+	
+	
+	Public Function GetExtractedVersion(txtFilePath)
+	Dim objFile: Set objFile = CreateObject("Scripting.FileSystemObject").OpenTextFile(txtFilePath,1)
+		GetExtractedVersion = objFile.ReadLine()
 	End Function
