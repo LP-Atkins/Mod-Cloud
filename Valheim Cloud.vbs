@@ -36,7 +36,7 @@
 
 'User Settings:
 '-----------------------------
-Dim embeddedURL:	embeddedURL = "https://onedrive.live.com/embed?cid=6002A8DD978B973A&resid=6002A8DD978B973A%2142416&authkey=AOw7p-kegsQxPrw"		'This is the embedded link to the onedrive file.
+Dim embeddedURL:	embeddedURL = "https://onedrive.live.com/embed?cid=88BD9559C9D8F090&resid=88BD9559C9D8F090%211411&authkey=AP7pluU26Ownjhw"		'This is the embedded link to the onedrive file.
 Dim BackupName:		BackupName = "(unmodded)"																										'The name of the modified backed up valheim folder, which will be restored when the game closes.
 Call Main
 
