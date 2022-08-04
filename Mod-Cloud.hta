@@ -1,0 +1,863 @@
+<!-- Information:
+	
+'Mod-Cloud Server Client
+'Re-written in vbs because windows defender kept falsly flagging the .exe version as a trojan. -24/09/2021
+'Packaged into HTA to provide a GUI and to make it easy to implement for other games. 05/08/2022
+'
+'Operational description:
+'-----------------------------
+'1.) Downloads the latest mod file and extracts it.
+'2.) Makes a copy of the original game files.
+'3.) Patches the game folder with the mods directory.
+'4.) Launches the game via a steam command.
+'5.) Waits until the game is closed and then restores the vanilla files.
+'
+
+'Instructions ***IMPORTANT*** - This script was written for useage with Microsoft Onedrive only.
+'Note1: Check the 'How to use.pdf' file in the repository for more detailed instructions.
+'Note2: The default embeddedURL will point you to my public server, this server will continue to run indefinitely.
+'-----------------------------
+'1.) Create a zip file of all your mods from the root directory of the game your are managing.
+'2.) Upload to onedrive and generate an embedded link.
+'3.) Copy the embedded 'src' link and replace the user setting variable embeddedURL with the new string.
+'4.) Save the .vbs file and distribute to clients.
+'5.) Launch the game via this vbs file.
+
+'Note: If the game directory is not found you will need to input location of the vanilla files.
+
+
+'Original Release by LongParnsip
+'Current Version: 1.05
+'-------------------------------------------------------------------------------
+'Version        Date                Author                  Description
+'
+'v1.00          24/09/2021          LongParsnip             Original Release (exe release).
+'v1.01			24/09/2021			LongParsnip				VBS release.
+'v1.02			27/09/2021			LongParsnip				Added SteamUI support.
+'v1.03			12/10/2021			LongParsnip				Re-written to download from a direct link which makes end user usage a 'one click' operation.
+'v1.04			26/07/2022			LongParsnip				Changed from single game managment to any game.
+'v1.05			05/08/2022			LongParsnip				Packaged into HTA for GUI and repurposing for other games.
+
+
+
+'Todo List:
+'	a.) Automatically search for SID.
+'	b.) Create patched file list for unpatching instead of just copying entire directories.
+'	c.) Leave patch file behind incase of improper shutdown.
+'	d.) Prevent scripts from running more than a single instance.
+'	e.) Make GUI look nicer.
+
+
+-->
+
+<html>
+<head>
+	<title>Mod Cloud - By Longparsnip</title>
+	<HTA:APPLICATION APPLICATIONNAME="Mod Cloud - By Longparsnip" ID="ModCloud" VERSION="1.0"	SCROLL="no"
+	ICON="magnify.exe" 
+	INNERBORDER="NO" 
+	MAXIMIZEBUTTON="NO" 
+	MINIMIZEBUTTON="NO" 
+	SCROLL="YES" 
+	SELECTION="NO" 
+	SINGLEINSTANCE="YES"/>
+</head>
+
+
+<!-- GUI Scripts -->
+<script type="text/VBScript" id="GUI Scripts">
+
+	Public arrConnections()
+	Public connectionStartMarker: connectionStartMarker = "<" & "!--Saved Connections"
+	Public scriptStartMarker: scriptStartMarker = "<" & "!--ConnectionScript"
+	Public scriptStopMarker: scriptStopMarker = "ConnectionScript-->"
+	Public SelectedIndex
+
+
+	Sub Window_OnLoad
+		
+		Me.ResizeTo 550,550
+		Call CreateConnectionList(ConnectionList)
+		
+	End Sub
+	
+	
+	Sub btnEditSelected_onclick
+	Dim strTemp
+	Dim x
+	
+		For Each x In connections.Options
+			If x.Selected Then
+				SelectedIndex = x.Value
+			End If
+		Next
+	
+	
+		ConnectionList.innerHtml = vbNullString
+				
+		AddLine strTemp, "<input type='text' id='displayName' /> List Display Name <P></P>"		
+		AddLine strTemp, "<input type='text' id='gameName' /> Game Folder Name <P></P>"
+		AddLine strTemp, "<input type='text' id='gameExe' /> Exe Name <P></P>"
+		AddLine strTemp, "<input type='text' id='gameSteamID' /> Steam ID <P></P>"
+		AddLine strTemp, "<input type='text' id='embeddedURL' /> Modpack embedded URL <P></P>"
+		AddLine strTemp, "<input type='button' value='Save' name='btnSave' onclick='btnSave_onclick'>"
+		AddLine strTemp, "<input type='button' value='Cancel' name='btnCancel' onclick='btnCancel_onclick'>"
+		CreateMenu.innerHtml = strTemp
+		
+		displayName.Value = ReadKeyValue("displayName", arrConnections(SelectedIndex))
+		gameName.Value = ReadKeyValue("gameName", arrConnections(SelectedIndex))
+		gameExe.Value = ReadKeyValue("gameExe", arrConnections(SelectedIndex))
+		gameSteamID.Value = ReadKeyValue("gameSteamID", arrConnections(SelectedIndex))
+		embeddedURL.Value = ReadKeyValue("embeddedURL", arrConnections(SelectedIndex))
+	
+	End Sub
+	
+	
+	Sub btnSave_onclick
+	Dim arrFile()
+		
+		Call ModifyKeyValue("displayName", displayName.Value, arrConnections(SelectedIndex))
+		Call ModifyKeyValue("gameName", gameName.Value, arrConnections(SelectedIndex))
+		Call ModifyKeyValue("gameExe", gameExe.Value, arrConnections(SelectedIndex))
+		Call ModifyKeyValue("gameSteamID", gameSteamID.Value, arrConnections(SelectedIndex))
+		Call ModifyKeyValue("embeddedURL", embeddedURL.Value, arrConnections(SelectedIndex))
+		Call CreateFileArray(arrFile)
+		Call WriteToFile(document.location.pathName, arrFile)
+		Location.Reload(True)
+		
+	End Sub
+	
+	
+	Sub btnCancel_onclick
+		Location.Reload(True)
+	End Sub
+	
+	
+	Sub btnRemoveSelected_onclick
+	Dim arrFile()
+	
+		'Exit if array is empty.
+		If UBound(arrConnections) = -1 Then Exit Sub
+	
+		If Msgbox("Are you sure", vbYesNo, "Remove Connection") = vbYes Then
+			
+			'Single element.
+			If UBound(arrConnections) = 0 Then
+				Erase arrConnections
+				Call CreateFileArray(arrFile)
+				Call WriteToFile(document.location.pathName, arrFile)
+				Location.Reload(True)
+				Exit Sub
+			End If
+			
+			'Multiple entries.
+			Dim x
+			For Each x In connections.Options
+				If x.Selected Then
+					Exit For
+				End If
+			Next
+			
+			Dim i
+			'Shift ArrayUp
+			For i = x.Value To UBound(arrConnections) - 1
+				arrConnections(i) = arrConnections(i + 1)
+			Next
+			Redim Preserve arrConnections(UBound(arrConnections)-1)
+			
+			'Write New File.
+			Call CreateFileArray(arrFile)
+			Call WriteToFile(document.location.pathName, arrFile)
+			Location.Reload(True)
+			
+		End If
+	
+	End Sub
+	
+	
+	Sub connections_ondblclick
+	Dim strTemp
+	Dim arrHeader
+	Dim arrFile()
+	Dim arrScript()
+	Dim iStart, iStop
+	Dim i
+	Dim x	
+		
+		For Each x In connections.Options
+			If x.Selected Then
+				Exit For			
+			End If
+		Next
+		
+		
+		'Create the script header.
+		AddLine strTemp, "Dim gameName:		gameName = " & Chr(34) & ReadKeyValue("gameName", arrConnections(CInt(x.Value))) & Chr(34)
+		AddLine strTemp, "Dim gameExe:		gameExe = " & Chr(34) & ReadKeyValue("gameExe", arrConnections(CInt(x.Value))) & Chr(34)
+		AddLine strTemp, "Dim gameSteamID:	gameSteamID = " & Chr(34) & ReadKeyValue("gameSteamID", arrConnections(CInt(x.Value))) & Chr(34)
+		AddLine strTemp, "Dim embeddedURL:	embeddedURL = " & Chr(34) & ReadKeyValue("embeddedURL", arrConnections(CInt(x.Value))) & Chr(34)
+		AddLine strTemp, "Dim BackupName:		BackupName = ""(unmodded)"""
+		AddLine strTemp, "Call Main"
+		arrHeader = Split(strTemp, vbCrLf)
+		
+		
+		'Read contents of this file into an array.
+		Call ReadEntireFile(document.location.pathName, arrFile)
+		
+		'Find the start position of the connection settings.
+		For i = UBound(arrFile) To Lbound(arrFile) Step - 1
+			If arrFile(i) = scriptStartMarker Then
+				iStart = i + 1
+				Exit For
+			End If
+			If arrFile(i) = scriptStopMarker Then
+				iStop = i - 1
+			End If
+		Next
+		
+		'Write script to array.
+		Redim arrScript(iStop - iStart)
+		For i = LBound(arrScript) To UBound(arrScript)
+			arrScript(i) = arrFile(iStart + i)
+		Next
+		
+		
+		'Join Arrays.
+		Call JoinArrays(arrHeader, arrScript, arrHeader)
+		
+		'Write script to file
+		Dim objShell:	set objShell = CreateObject("WScript.Shell")
+		Call WriteToFile(objShell.ExpandEnvironmentStrings("%temp%") & "\Mod-Cloud.vbs", arrHeader)
+		objShell.Run objShell.ExpandEnvironmentStrings("%temp%") & "\Mod-Cloud.vbs"
+		Window.Close
+		
+	End Sub
+	
+
+	Sub btnAddConnection_onclick
+	Dim arrFile()
+	Dim i, o
+	Dim assignmentDelimiter:	assignmentDelimiter = "|"
+		
+		If displayName.value <> vbNullstring And gameName.value <> vbNullString And gameExe.value <> vbNullString And gameSteamID.value <> vbNullString And embeddedURL.value <> vbNullString Then
+		Else
+			Msgbox "Please fill out all fields first!"
+			Exit Sub
+		End If
+		
+		
+		'Write new entry to array.
+		Redim Preserve arrConnections(Ubound(arrConnections) + 1)
+		arrConnections(Ubound(arrConnections)) = "displayName" & assignmentDelimiter & displayName.Value & ",gameName" & assignmentDelimiter & gameName.Value & ",gameExe" & assignmentDelimiter & gameExe.Value & ",gameSteamID" & assignmentDelimiter & gameSteamID.Value & ",embeddedURL" & assignmentDelimiter & embeddedURL.Value
+		
+		'Create the array for the new file.
+		Call CreateFileArray(arrFile)
+		
+		'Write New File.
+		Call WriteToFile(document.location.pathName, arrFile)
+		Location.Reload(True)
+
+	End Sub
+
+	Sub btnSelectFolder_onclick
+	Dim arrTemp
+	Dim Path
+	
+		arrTemp = Split(document.location.pathname, "\")
+		Path = Left(document.location.pathname, Len(document.location.pathname) - Len(arrTemp(Ubound(arrTemp))))
+		saveLocation.value = PickFolder(Path)
+		
+	End Sub
+	
+	
+	
+	'Non GUI Events.
+	'---------------------------------------------------------------------------------------------------------------------
+
+
+	'Creates an array of the new file to be written.
+	Sub CreateFileArray(ByRef inputArray)
+	Dim i
+	
+		'Read file conents and find entry point.
+		Call ReadEntireFile(document.location.pathName, inputArray)
+		For i = UBound(inputArray) To Lbound(inputArray) Step - 1
+			If inputArray(i) = connectionStartMarker Then
+				i = i + 1
+				Exit For
+			End If
+		Next
+		
+
+		If UBound_NE(arrConnections) <> -1 Then
+			For o = LBound_NE(arrConnections) To UBound_NE(arrConnections)
+				inputArray(i) = arrConnections(o)
+				i = i + 1
+			Next
+		End If
+		
+		inputArray(i) = "-->"
+		Redim Preserve inputArray(i)
+		
+	End Sub
+	
+	
+	
+	Sub CreateConnectionList(spanID)
+	'Dim connectionStartMarker: connectionStartMarker = "<" & "!--Saved Connections"
+	Dim i, o
+	Dim strTemp
+	Dim arrFile()
+	
+		'Split contents of this file into an array.
+		'arrFile = Split(ReadEntireFile(document.location.pathName), vbCrLf)
+		
+		'Read contents of this file into an array.
+		Call ReadEntireFile(document.location.pathName, arrFile)
+		
+		'Find the start position of the connection settings.
+		For i = UBound(arrFile) To Lbound(arrFile) Step - 1
+			If arrFile(i) = connectionStartMarker Then
+				Exit For
+			End If
+		Next
+		
+		'Place each line into the global connection array.
+		Redim arrConnections(Ubound(arrFile) - (i+1)-2)
+		o = 0
+		For i = i + 1 To UBound(arrFile)-2
+			arrConnections(o) = arrFile(i)
+			o = o + 1
+		Next
+		
+		
+		Dim selSize
+		selSize = Ubound(arrConnections) + 1
+		If selSize = 1 Then SelSize = 2
+		
+		'Write the HTML code for a select list, that will be written into the span.
+		If UBound(arrConnections) = -1 Then Exit Sub
+		AddLine strTemp, "Available Connections (double click to launch)"
+		AddLine strTemp, "<br>"
+		AddLine strTemp, "<p>"
+		AddLine strTemp, "<select onDblClick='connections_ondblclick()' name ='Connections' id='connections' size=" & SelSize & ">"
+		AddLine strTemp, vbTab & "<option value='0' selected='selected'>" & ReadKeyValue("displayName", arrConnections(0)) & "</option>"
+			'Add Each Option
+			For i = 2 To UBound(arrConnections) + 1
+				AddLine strTemp, vbTab & "<option value='" & i-1 & "'>" & ReadKeyValue("displayName", arrConnections(i -1)) & "</option>"
+			Next
+		AddLine strTemp, "</select>"
+		AddLine strTemp, "<br>"
+		Addline strTemp, "<p>"
+		Addline strTemp, "<input type='button' value='Edit Selected Connection' name='btnEditSelected' onclick='btnEditSelected_onclick' style='background-color:blue; border-color:red; color:white'>"
+		Addline strTemp, "<input type='button' value='Remove Selected Connection' name='btnRemoveSelected' onclick='btnRemoveSelected_onclick' style='background-color:red; border-color:blue; color:white'>"
+		
+		
+		'Write the InnerHTML to the span.
+		spanID.innerHtml = strTemp
+		
+	End Sub
+	
+</script>
+
+
+<!-- GUI Elements -->
+<body bgcolor="#d0d4c8">
+
+	<span id='ConnectionList'></span>
+
+	<span id='CreateMenu'>
+	<br>
+	<br>
+	<br>
+	<br>
+	<br>
+		Manual Game Entry<P></P>
+		<input type='text' id='displayName' /> List Display Name <P></P>
+		<input type='text' id='gameName' /> Game Folder Name <P></P>
+		<input type='text' id='gameExe' /> Exe Name <P></P>
+		<input type='text' id='gameSteamID' /> Steam ID <P></P>
+		<input type='text' id='embeddedURL' /> Modpack embedded URL <P></P>
+		<input type='button' value='Add connection' name='btnAddConnection'>
+	</span>
+	
+	
+</body>
+
+
+<!-- Utility Scripts -->
+<script type="text/VBScript" id="Utility Scripts">
+
+	'Adds a line of text to a string.
+	Public Sub AddLine(ByRef inputStr, newLine)
+		inputStr = inputStr & newLine & vbCrLf
+	End Sub
+
+
+
+	'For Joining 0 based arrays.
+	Public Sub JoinArrays(ByVal Array1, ByVal Array2, ByRef ArrayOutput)
+	Dim TotalLength
+	Dim i
+	Dim o: o = 0
+
+		TotalLength = UBound(Array1) + UBound(Array2) + 1
+		Redim ArrayOutput(TotalLength)
+		
+		'Primary Array
+		For i = LBound(Array1) To UBound(Array1)
+			ArrayOutput(o) = Array1(i)
+			o = o + 1
+		Next
+		
+		'Secondary Array
+		For i = LBound(Array1) To UBound(Array2)
+			ArrayOutput(o) = Array2(i)
+			o = o + 1
+		Next
+
+	End Sub
+	
+	
+	
+	'Modifies the inputstring for a key-value pair, so pass it to be modified then write it back to where you are going to store it.
+	Public Sub ModifyKeyValue(keyName, newValue, ByRef inputString)
+	Dim arrKeyPairs
+	Dim arrValues
+	Dim i
+	Dim strTemp
+	Dim assignmentDelimiter:	assignmentDelimiter = "|"
+
+		
+		arrKeyPairs = Split(inputString, ",")
+		For i = LBound(arrKeyPairs) To UBound(arrKeyPairs)
+			arrValues = Split(arrKeyPairs(i), assignmentDelimiter)
+			If UCASE(arrValues(0)) = UCASE(keyName) Then
+				arrValues(1) = newValue
+			End If
+			strTemp = strTemp & arrValues(0) & assignmentDelimiter & arrValues(1)
+			If i <> UBound(arrKeyPairs) Then strTemp = strTemp & ","
+		Next
+
+		inputString = strTemp
+		
+	End Sub
+	
+	
+
+	'Reads an entire file into an array.
+	Sub ReadEntireFile(filePath, ByRef outputArray)
+	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+	Dim objFile
+	Dim i: i = 0
+
+		Set objFile = objFSO.OpenTextFile(filePath)
+		Do Until objFile.AtEndOfStream
+			ReDim Preserve outputArray(i + 1)
+			outputArray(i) = objFile.ReadLine
+			i = i + 1
+		Loop
+		objFile.Close
+		
+	End Sub
+	
+	
+	
+	'Reads a value stored in a key.
+	'Note: All key-value pairs must be stored in a string of a single line... built for specific purpose.
+	Public Function ReadKeyValue(keyName, inputString)
+	Dim arrKeyPairs
+	Dim arrValues
+	Dim i
+	Dim bLocated: bLocated = False			'Written false at the start otherwise VBS wont know that it is a boolean if never written later on.
+	Dim assignmentDelimiter:	assignmentDelimiter = "|"
+
+		arrKeyPairs = Split(inputString, ",")
+		For i = LBound(arrKeyPairs) To UBound(arrKeyPairs)
+			arrValues = Split(arrKeyPairs(i), assignmentDelimiter)
+			If UCASE(arrValues(0)) = UCASE(keyName) Then
+				bLocated = True
+				Exit For
+			End If
+		Next
+		
+		If bLocated Then ReadKeyValue = arrValues(1)
+
+	End Function
+	
+
+
+	'Writes an array of strings to a file.
+	Sub WriteToFile(filePath, outputArray)
+	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+	Dim objFile
+	Dim i: i = 0
+			
+		Set objFile = objFSO.CreateTextFile(filePath, True)
+		For i = Lbound_NE(outputArray) To UBound_NE(outputArray)
+			objFile.Write outputArray(i) & vbCrLf
+		Next
+		objFile.Close
+		
+	End Sub
+	
+	
+	
+	'LBound function with empty array detection. If empty instead of an error will return -1.
+	Public Function LBound_NE(ByRef inArray)
+	On Error Resume Next
+	Dim x
+	
+		x = LBound(inArray)
+		If Err.Number = 0 Then
+			LBound_NE = x
+		Else
+			LBound_NE = -1
+		End If
+	
+	End Function
+	
+	
+	
+	'UBound function with empty array detection. If empty instead of an error will return -1.
+	Public Function UBound_NE(ByRef inArray)
+	On Error Resume Next
+	Dim x
+	
+		x = UBound(inArray)
+		If Err.Number = 0 Then
+			UBound_NE = x
+		Else
+			UBound_NE = -1
+		End If
+	
+	End Function
+
+</script>
+
+<script type="text/VBScript" id="Mod-Cloud">
+</script>
+
+
+</html>
+
+
+<!--ConnectionScript
+Sub Main()
+
+	'Find the game directory by reading the registry and steam library file.
+	Dim sVanillaPath: sVanillaPath = LocateFolder
+	If sVanillaPath = "NOT FOUND" Then
+		Msgbox "Couldn't locate the " & gameName & " directory", vbOkOnly, gameName & " Missing"
+		Exit Sub
+	End If
+	If FolderExists(sVanillaPath & "\BepInEx") Then	'Mods detected warning.
+		If Msgbox("It looks like your game is modified, it is recommend to restore it to vanilla. Would you like to cancel the launch?", vbYesNo, "Mods Detected") = vbYes Then Exit Sub
+	End If
+	
+	
+	
+	'Create a MSXML object so that data can be scraped from the zip file URL.
+	Dim objMSXML:	Set objMSXML = CreateObject("MSXML2.ServerXMLHTTP")
+	Dim downloadURL:	downloadURL = Replace(embeddedURL, "embed", "download")
+		objMSXML.open "GET", embeddedURL, false
+		objMSXML.send
+
+
+
+	'Get the last modified data.
+	Dim strTemp, arrTemp, DateModified
+		strTemp = Mid(objMSXML.responseText,Instr(1, objMSXML.responseText, """modifiedDate""") + 15, 30)
+		arrTemp = Split(strTemp,","): DateModified = arrTemp(0)
+
+
+
+	'Download File, if required.
+	CreateFolder(sVanillaPath & "\mods")	'Create mods directory if it doesn't exist.
+	If Not FileExists(sVanillaPath & "\mods\mods-" & DateModified & ".zip") Then
+		Msgbox "Downloading Update - Press OK to start the download, this may take a while.", vbOkOnly, "Update Available"
+		Dim objStream:		Set objStream = CreateObject("Adodb.Stream")
+			objMSXML.Open "GET", downloadURL, false
+			objMSXML.Send
+			objStream.type = 1
+			objStream.open
+			objStream.write objMSXML.responseBody
+			objStream.savetofile sVanillaPath & "\mods\mods-" & DateModified & ".zip", 2
+			objStream.close
+	End If
+	
+	
+	
+	
+	
+	
+	'Create Game Files
+	'-----------------------------------------------------------------------------------------------------
+
+	'Remove old extracted versions of the mods if they exist.
+	Dim CurrentVersion
+	If FileExists(sVanillaPath & "\mods\unzipped\version.txt") Then
+		CurrentVersion = GetExtractedVersion(sVanillaPath & "\mods\unzipped\version.txt")
+		If CurrentVersion <> DateModified Then
+			Call DeleteFolder(sVanillaPath & "\mods\unzipped")
+		End If
+	Else
+		If FolderExists(sVanillaPath & "\mods\unzipped\") Then Call DeleteFolder (sVanillaPath & "\mods\unzipped\")		'Delete unzipped folder just incase it logically exists when it shouldn't.
+	End If
+	
+	Call CreateFolder(sVanillaPath & "\mods\unzipped")
+	If CurrentVersion <> DateModified Then Call UnzipFiles(sVanillaPath & "\mods\mods-" & DateModified & ".zip", sVanillaPath & "\mods\unzipped")		'Unzip the files if they haven't been already.
+	Call DebugPrint(sVanillaPath & "\mods\unzipped\version.txt", DateModified)
+	Call RoboCopy(sVanillaPath, sVanillaPath & BackupName, "/MIR")				'Game Files.
+	Call RoboCopy(sVanillaPath & "\mods\unzipped", sVanillaPath, "/s")   		'Copy mods to the correct locations.
+	Call CleanupOldFiles(sVanillaPath & BackupName & "\mods\", DateModified)	'Removes old versions of the mods zip file.
+	
+	
+	
+	'Launch Application
+	Call OpenFile("steam://run/" & gameSteamID)
+	
+	
+	'Wait for VH to be closed.
+	'This restores the vanilla files once the game is closed (as the only way to get the SteamUI to work is to launch via steam."
+	Dim vhPID
+	WScript.Sleep 15000
+	vhPID = getPID(gameExe)
+	Do While vhPID <> 0
+		WScript.Sleep 5000
+		vhPID = getPID(gameExe)
+	Loop
+	Call RoboCopy(sVanillaPath & BackupName, sVanillaPath, "/MIR")	'Copy back original files.
+	
+
+End Sub
+
+
+
+
+
+
+'---------------------------------------------------------------------------------------------
+'----- Subprocedures
+'---------------------------------------------------------------------------------------------
+
+	Public Sub DebugPrint(outputLocation, whatToPrint)
+	Dim objFile: Set objFile = CreateObject("Scripting.FileSystemObject").OpenTextFile(outputLocation,2,True)
+
+		objFile.WriteLine(whatToPrint)
+		objFile.Close
+
+	End Sub
+
+
+	
+	Public Sub UnzipFiles(zipPath, extractPath)
+	Dim objShellApp:	Set objShellApp = CreateObject("Shell.Application")
+	Dim zipFiles:		Set zipFiles = objShellApp.NameSpace(zipPath).Items
+	
+		objShellApp.NameSpace(extractPath).copyHere zipFiles, 16
+		
+	End Sub
+	
+	
+	
+	'Note: We are cleaning up the backup directory, because robocopy will purge the vanilla directory later when the game exits.
+	Public Sub CleanupOldFiles(zipDirectory, CurrentVersion)
+	Dim arrFiles: arrFiles = ListFiles(zipDirectory)
+	Dim i, o
+	
+		For i = LBound(arrFiles) To UBound(arrFiles)
+			If arrFiles(i) <> "" Then
+				If Instr(1, arrFiles(i), CurrentVersion) = 0 Then
+					Call DeleteFile(zipDirectory & arrFiles(i))
+				End If
+			End If
+		Next
+	
+	End Sub
+	
+	
+	
+	Public Sub DeleteFile(filePath)
+	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+		objFSO.DeleteFile filePath, True
+	End Sub
+	
+	
+	
+	Public Sub DeleteFolder(folderPath)
+	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+		objFSO.DeleteFolder folderPath, True
+	End Sub
+	
+	
+	
+	'Opens a file at the specified path.
+	'Call openFile("C:\MyFile.txt")
+	Public Sub OpenFile(strFilePath)
+	Dim objShellApplication: Set objShellApplication = CreateObject("Shell.Application")
+		objShellApplication.Open strFilePath
+	End Sub
+	
+
+'---------------------------------------------------------------------------------------------
+'----- Functions
+'---------------------------------------------------------------------------------------------
+
+	'Returns the path that the script is executing from.
+	Public Function GetScriptPath()
+		GetScriptPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
+	End Function
+
+
+
+	Public Function LocateFolder
+		Dim steamPath
+		
+			steamPath = GetSteamInstallPath
+			If FileExists(steamPath & "\steamapps\appmanifest_" & gameSteamID & ".acf") Then
+				LocateFolder = steamPath & "\steamapps\common\" & gameName
+				Exit Function
+			End If
+			
+			
+			Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+			Dim objFile: Set objFile = objFSO.OpenTextFile(steamPath & "\steamapps\libraryfolders.vdf",1)
+			Dim strLibs
+			Dim strLine
+				Do Until objFile.AtEndOfStream
+					strLine = objFile.ReadLine
+					If InStr(1, strLine, "path") > 0 Then strLibs = strLibs & Replace(Replace(Trim(Replace(Replace(Trim(strLine),Chr(34),""),"path","")),"\\","\"),vbTab,"") & "|"
+				Loop
+		
+			Dim arrLibs: arrLibs = Split(strLibs, "|")
+			Dim i
+			For i = LBound(arrLibs) To UBound(arrLibs)
+				If FileExists(arrLibs(i) & "\steamapps\appmanifest_" & gameSteamID & ".acf") Then
+					LocateFolder = arrLibs(i) & "\steamapps\common\" & gameName
+					Exit For
+				End If
+			Next
+		
+		objFile.Close
+		If LocateFolder = "" Then LocateFolder = "NOT FOUND"
+	End Function
+
+
+
+	Public Function GetSteamInstallPath()
+		Dim objShell:	Set objShell = CreateObject("Wscript.shell")
+			GetSteamInstallPath = Replace(objShell.RegRead("HKEY_CURRENT_USER\SOFTWARE\Valve\Steam\SteamPath"), "/", "\")
+	End Function
+
+
+
+	'This sub waits for the game client to start and then attaches the steam UI to the PID
+	Public Function getPID(exeName)
+	Dim objWMI:		Set objWMI = GetObject("winmgmts:!\\.\root\cimv2")
+	Dim wmiQuery, process
+	Dim PID
+	Dim i
+	
+		'Wait for the process to start and obtain it's Process Id (PID).
+		For i = 1 To 20
+			
+			wmiQuery = "SELECT ProcessId From Win32_Process WHERE Name = '" & exeName & "'"
+			For Each process In objWMI.ExecQuery(wmiQuery)
+				PID = process.ProcessId
+				If PID <> 0 Then
+					Exit For
+				Else
+					WScript.Sleep 1000
+				End If
+			Next
+			
+		Next
+		
+		
+	getPID = PID
+	End Function
+	
+	
+	
+	'Checks if a file exists.
+	Public Function FileExists(strPath)
+	Dim objFSO:	Set objFSO = CreateObject("Scripting.FileSystemObject")
+		If objFSO.FileExists(strPath) Then FileExists = True
+	End Function
+	
+	
+	
+	'Checks if a folder exists.
+	Public Function FolderExists(strPath)
+	Dim objFSO: Set objFSO = CreateObject("Scripting.FileSystemObject")
+		If objFSO.FolderExists(strPath) Then FolderExists = True
+	End Function
+	
+	
+	
+	'Checks for a folder and creates it if it doesn't exist
+	Public Sub CreateFolder(strPath)
+	Dim objFSO: Set objFSO = CreateObject("Scripting.FileSystemObject")
+
+		If Not objFSO.FolderExists(strPath) Then objFSO.CreateFolder (strPath)
+
+	End Sub
+	
+	
+	
+	'Robocopy with StdOut
+	Public Function RoboCopy(src, dest, switches)
+	Dim objShell:   Set objShell = CreateObject("Wscript.Shell")
+	Dim objExec
+	Dim strTemp
+
+		Set objExec = objShell.Exec("robocopy " & Chr(34) & src & Chr(34) & " " & Chr(34) & dest & Chr(34) & " " & switches)
+		Do While Not objExec.StdOut.AtEndOfStream
+			strTemp = strTemp & objExec.StdOut.ReadLine()
+		Loop
+		
+		
+		RoboCopy = strTemp
+	End Function
+	
+	
+	
+	'This Function Returns a list of folders.
+	'Array = ListFiles(objShell.CurrentDirectory & "\Folder\")
+	Function ListFiles(sFolder)
+
+		Dim objFSO : Set objFSO = CreateObject("Scripting.FileSystemObject")
+		Dim folder, files, dirLen, arrTemp(), i
+
+		Set folder = objFSO.GetFolder(sFolder)
+		Set files = folder.Files
+
+		dirLen = Len(sFolder)
+		
+		i = 0
+		Redim arrTemp(0)
+		
+		For each x In files
+			arrTemp(i) = Right(x,Len(x) - dirLen)
+			i = i + 1
+			Redim Preserve arrTemp(i)
+		Next
+	  
+		ListFiles = arrTemp
+	  
+	End Function
+	
+	
+	
+	Public Function GetExtractedVersion(txtFilePath)
+	Dim objFile: Set objFile = CreateObject("Scripting.FileSystemObject").OpenTextFile(txtFilePath,1)
+		GetExtractedVersion = objFile.ReadLine()
+	End Function
+ConnectionScript-->
+
+
+<!--Saved Connections
+displayName|Valheim [AUS - Gameface Gamers],gameName|Valheim,gameExe|Valheim.exe,gameSteamID|892970,embeddedURL|https://onedrive.live.com/embed?cid=88BD9559C9D8F090&resid=88BD9559C9D8F090%211411&authkey=AP7pluU26Ownjhw
+displayName|Muck [AUS - Gameface Gamers],gameName|Muck,gameExe|Muck.exe,gameSteamID|1625450,embeddedURL|https://onedrive.live.com/embed?cid=88BD9559C9D8F090&resid=88BD9559C9D8F090%211434&authkey=AI6dKAeUrdGxNood
+-->
