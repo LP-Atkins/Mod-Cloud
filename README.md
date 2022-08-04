@@ -1,4 +1,4 @@
-# Valheim-Cloud Server Client, v1.05
+# Mod-Cloud Server Client, v1.05
 A small app that syncs your server mods for various games via cloud services.
 This application is for Windows and onedrive only.
 
@@ -10,7 +10,7 @@ Written in Visual Basic Script using the windows scripting host.
 * v1.02: Added support for the steam overlay.
 * v1.03: Changed the script to use a direct link to a zip file for mods, this allows the script to be a 'one click' operation for the end user.
 * v1.04: Modified to support any game.
-* v1.05: Packaged into a HTA for multi-game management with a GUI.
+* v1.05: Packaged into a HTA for multi-game management with a GUI. (Renamed from Valheim-Cloud to Mod-Cloud)
 
   
 ## How to use:    ***NOTE*** The default setting in this file will load my server mod configuration and allow you to join my public server.
