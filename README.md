@@ -8,6 +8,11 @@ This application will only work for:
 Written as a HTA (HTML Application) using Visual Basic Script.
 Windows Only, launch using the HTA file, no external dependencies required.
 
+## Why did I make this?
+Modded Valheim is a lot of fun over vanilla but there is one major problem with it, the netcode is horrendously poor to the point where the game lags heavily with 2/3 players nearby each other.
+
+The only thing you can do about the netcode is modify the valheim assembly to uncap the send/receive rates and queue size or use a mod (my preferred mod is NetworkFix by Dalayeth). Now the problem when you start mucking around with the network settings is that you can't connect via the server browser because you need the network mod installed and you need to have the same exact settings for it too... now sure this isn't a problem get the mod and get the settings but what if you play on multiple servers, and that is why I made this.
+
 ## Version Summary:
 * v1.00: Original release.
 * v1.01: Converted to vbscript as windows defender was falsly flagging the .exe as a virus.
